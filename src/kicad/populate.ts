@@ -833,8 +833,20 @@ const atText = (x: number, y: number, a: number): string => `(at ${num(x)} ${num
  * old way: the part no longer matches its library and fine-pitch pads short
  * into each other. Its zones are stored in board coordinates, so they move
  * and turn with it too. All by anchored splices only.
+ *
+ * `label` puts the Reference text at a board position (#380). KiCad stores it
+ * relative to the footprint origin in the footprint's rotated frame, so the
+ * board point is turned back: local = R(-θ)·(board - origin), with the new
+ * origin and angle when the same call moves or turns the part.
  */
-export function moveFootprint(boardText: string, ref: string, x: number, y: number, rotation?: number): string {
+export function moveFootprint(
+  boardText: string,
+  ref: string,
+  x: number,
+  y: number,
+  rotation?: number,
+  label?: { x: number; y: number },
+): string {
   const open = boardText.indexOf('(kicad_pcb');
   if (open < 0) throw new Error('not a KiCad board');
   const owns = (s: Span): boolean => {
@@ -857,15 +869,30 @@ export function moveFootprint(boardText: string, ref: string, x: number, y: numb
     const from = { x: nums[0] ?? 0, y: nums[1] ?? 0 };
     edits.push({ start: k.start, end: k.end, text: moveZonePoints(boardText.slice(k.start, k.end), from, { x, y }, delta) });
   }
-  if (delta) {
-    for (const k of kids) {
-      if (k.tag !== 'pad' && k.tag !== 'property' && k.tag !== 'fp_text') continue;
-      const own = childSpans(boardText, k.start).find((c) => c.tag === 'at');
-      if (!own) continue;
-      const v = boardText.slice(own.start, own.end).match(/-?[\d.]+/g)?.map(Number) ?? [];
-      const rest = / unlocked\)$/.test(boardText.slice(own.start, own.end)) ? ' unlocked' : '';
-      edits.push({ start: own.start, end: own.end, text: atText(v[0] ?? 0, v[1] ?? 0, normAngle((v[2] ?? 0) + delta)).replace(/\)$/, `${rest})`) });
+  const isRef = (k: Span): boolean => {
+    const t = boardText.slice(k.start, k.end);
+    return (k.tag === 'property' && t.startsWith('(property "Reference"')) || (k.tag === 'fp_text' && /^\(fp_text\s+reference\b/.test(t));
+  };
+  const refText = kids.find(isRef);
+  if (label && !refText) throw new Error(`${ref} has no Reference text to place`);
+  // KiCad's board = origin + R(θ)·local, with y down: (lx·c + ly·s, -lx·s + ly·c)
+  const rad = (to * Math.PI) / 180;
+  const [cos, sin] = [Math.cos(rad), Math.sin(rad)];
+  const [dx, dy] = label ? [label.x - x, label.y - y] : [0, 0];
+  const local = label && { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
+  for (const k of kids) {
+    if (k.tag !== 'pad' && k.tag !== 'property' && k.tag !== 'fp_text') continue;
+    const placeLabel = local && k === refText;
+    if (!delta && !placeLabel) continue;
+    const own = childSpans(boardText, k.start).find((c) => c.tag === 'at');
+    if (!own) {
+      if (placeLabel) throw new Error(`${ref}'s Reference text has no (at …) to place`);
+      continue;
     }
+    const v = boardText.slice(own.start, own.end).match(/-?[\d.]+/g)?.map(Number) ?? [];
+    const rest = / unlocked\)$/.test(boardText.slice(own.start, own.end)) ? ' unlocked' : '';
+    const [lx, ly] = placeLabel ? [local.x, local.y] : [v[0] ?? 0, v[1] ?? 0];
+    edits.push({ start: own.start, end: own.end, text: atText(lx, ly, normAngle((v[2] ?? 0) + delta)).replace(/\)$/, `${rest})`) });
   }
   let text = boardText;
   for (const e of edits.sort((a, b) => b.start - a.start)) text = text.slice(0, e.start) + e.text + text.slice(e.end);
