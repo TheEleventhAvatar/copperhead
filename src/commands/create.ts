@@ -170,8 +170,11 @@ async function programmableParts(root: string): Promise<string[] | null> {
 async function noFirmwareReadme(root: string): Promise<boolean> {
   const p = path.join(root, 'firmware', 'README.md');
   if (!existsSync(p)) return false;
-  // an HTML comment, one line or many, is not a written reason
-  const lines = (await readFile(p, 'utf8')).replace(/<!--[\s\S]*?-->/g, '').split(/\r?\n/);
+  // an HTML comment, one line or many, closed or not, is not a written reason
+  const lines = (await readFile(p, 'utf8'))
+    .replace(/<!--[\s\S]*?-->/g, '')
+    .replace(/<!--[\s\S]*$/, '')
+    .split(/\r?\n/);
   const first = lines.findIndex((l) => l.trim());
   if (first < 0 || !/^#\s+No firmware\b/i.test(lines[first]!.trim())) return false;
   return lines.slice(first + 1).some((l) => l.trim() && !l.trim().startsWith('#'));
