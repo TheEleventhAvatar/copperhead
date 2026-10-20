@@ -79,6 +79,8 @@ describe('JLCPCB BOM commit after the outputs stage (#379)', () => {
   it('logs a failed commit and carries on, leaving HEAD where it was', async () => {
     const { repo, cleanup } = await tempFixtureRepo();
     try {
+      // A global core.hooksPath would make git ignore .git/hooks; the repo's own setting wins.
+      await git(repo, ['config', 'core.hooksPath', '.git/hooks']);
       await seedBom(repo);
       // A user's pre-commit hook that rejects every commit.
       const hook = path.join(repo, '.git', 'hooks', 'pre-commit');
