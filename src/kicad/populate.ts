@@ -863,11 +863,17 @@ export function moveFootprint(
   const from = normAngle(nums[2] ?? 0);
   const to = normAngle(rotation ?? from);
   const delta = to - from;
-  const edits: { start: number; end: number; text: string }[] = [{ start: at.start, end: at.end, text: atText(x, y, to) }];
-  for (const k of kids) {
-    if (k.tag !== 'zone') continue;
-    const from = { x: nums[0] ?? 0, y: nums[1] ?? 0 };
-    edits.push({ start: k.start, end: k.end, text: moveZonePoints(boardText.slice(k.start, k.end), from, { x, y }, delta) });
+  const origin = { x: nums[0] ?? 0, y: nums[1] ?? 0 };
+  // a label-only call (same origin, same angle) must leave the placement and
+  // the zones byte-for-byte as they are (#380): only the label's (at …) changes
+  const placementChanged = x !== origin.x || y !== origin.y || delta !== 0;
+  const edits: { start: number; end: number; text: string }[] = [];
+  if (placementChanged) {
+    edits.push({ start: at.start, end: at.end, text: atText(x, y, to) });
+    for (const k of kids) {
+      if (k.tag !== 'zone') continue;
+      edits.push({ start: k.start, end: k.end, text: moveZonePoints(boardText.slice(k.start, k.end), origin, { x, y }, delta) });
+    }
   }
   const isRef = (k: Span): boolean => {
     const t = boardText.slice(k.start, k.end);
@@ -892,6 +898,8 @@ export function moveFootprint(
     const v = boardText.slice(own.start, own.end).match(/-?[\d.]+/g)?.map(Number) ?? [];
     const rest = / unlocked\)$/.test(boardText.slice(own.start, own.end)) ? ' unlocked' : '';
     const [lx, ly] = placeLabel ? [local.x, local.y] : [v[0] ?? 0, v[1] ?? 0];
+    // a label already where it is asked to go keeps its own spelling
+    if (!delta && num(lx) === num(v[0] ?? 0) && num(ly) === num(v[1] ?? 0)) continue;
     edits.push({ start: own.start, end: own.end, text: atText(lx, ly, normAngle((v[2] ?? 0) + delta)).replace(/\)$/, `${rest})`) });
   }
   let text = boardText;

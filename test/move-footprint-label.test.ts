@@ -65,6 +65,32 @@ describe('moveFootprint places the Reference text by board position (#380)', () 
     expect(atOf(placed, '(pad "1"')).toBe('(at -0.7875 0)');
   });
 
+  // a footprint-owned zone, spelled the way KiCad writes it
+  const ZONED = R2.replace(
+    '\t\t(pad "1"',
+    '\t\t(zone (net 0) (net_name "")\n\t\t\t(polygon (pts (xy 100.000000 99.000000) (xy 101.000000 99.000000) (xy 101.000000 100.000000)))\n\t\t)\n\t\t(pad "1"',
+  );
+
+  it('a label-only call changes only the Reference text, byte for byte (owned zone kept as written)', () => {
+    const placed = moveFootprint(ZONED, 'R2', 100, 100, undefined, { x: 98, y: 100 });
+    expect(placed).toBe(ZONED.replace('(property "Reference" "R2"\n\t\t\t(at 0 -1.43 0)', '(property "Reference" "R2"\n\t\t\t(at -2 0)'));
+    // the same, with the current angle passed explicitly
+    expect(moveFootprint(ZONED, 'R2', 100, 100, 0, { x: 98, y: 100 })).toBe(placed);
+  });
+
+  it('returns the board unchanged when neither the placement nor the label changes', () => {
+    expect(moveFootprint(ZONED, 'R2', 100, 100)).toBe(ZONED);
+    expect(moveFootprint(ZONED, 'R2', 100, 100, 0)).toBe(ZONED);
+    // a label asked to go where it already is keeps its own spelling
+    expect(moveFootprint(ZONED, 'R2', 100, 100, undefined, { x: 100, y: 98.57 })).toBe(ZONED);
+  });
+
+  it('a real move still moves the owned zone with the part', () => {
+    const moved = moveFootprint(ZONED, 'R2', 110, 100);
+    expect(moved).toContain('(at 110 100)');
+    expect(moved).toContain('(xy 110 99) (xy 111 99) (xy 111 100)');
+  });
+
   it('places a KiCad 6 fp_text reference and keeps its unlocked flag', () => {
     const old = board('(fp_text reference "R2" (at 0 -1.43 0 unlocked) (layer "F.SilkS"))');
     const placed = moveFootprint(old, 'R2', 100, 100, 90, { x: 100, y: 98 });

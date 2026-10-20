@@ -115,3 +115,4 @@
 - [x] 15.2 `move_footprint` takes `label_x`/`label_y` (both or neither), and its result names where the text went; the Stage 5 prompt sends refdes label fixes to it instead of `edit_file`
 - [x] 15.3 Tests: the local frame at 0/90/180/270 degrees, turning and placing in one call, label-only, `fp_text`, unchanged output without a label, argument checks, the prompt; checked against pcbnew 10.0.7 on front and back footprints
 - [x] 15.4 SPEC.md AC-15.42, delta spec, proposal
+- [x] 15.5 Review of PR 408: a label-only call (same origin and angle) leaves the footprint's `(at …)` and its owned zones byte-for-byte as written, and a call that changes nothing returns the board unchanged; tests compare the complete output with a footprint-owned zone in KiCad's `100.000000` spelling
