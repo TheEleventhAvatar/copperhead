@@ -145,7 +145,8 @@ const FIRMWARE_SOURCE_EXTS = ['.c', '.h', '.cpp', '.hpp', '.py', '.rs', '.ino', 
  * included (`fixture:ESP32-S3-MINI`), may hold code, so an unknown part never
  * excuses the stage.
  */
-const NON_PROGRAMMABLE_LIB = /^(Device|Connector(_\w+)?|Diode(_\w+)?|Transistor_\w+|Regulator_\w+|Mechanical|power|Power_Protection|LED|Switch|Jumper|Graphic)$/;
+const NON_PROGRAMMABLE_LIB =
+  /^(Device|Connector(_\w+)?|Diode(_\w+)?|Transistor_\w+|Regulator_\w+|Mechanical|power|Power_Protection|LED|Switch|Jumper|Graphic|Amplifier_Operational|Amplifier_Instrumentation|Comparator|Reference_Voltage|Relay)$/;
 
 /**
  * The schematic's parts that could hold firmware, by the library their symbol
@@ -169,10 +170,11 @@ async function programmableParts(root: string): Promise<string[] | null> {
 async function noFirmwareReadme(root: string): Promise<boolean> {
   const p = path.join(root, 'firmware', 'README.md');
   if (!existsSync(p)) return false;
-  const lines = (await readFile(p, 'utf8')).split(/\r?\n/);
+  // an HTML comment, one line or many, is not a written reason
+  const lines = (await readFile(p, 'utf8')).replace(/<!--[\s\S]*?-->/g, '').split(/\r?\n/);
   const first = lines.findIndex((l) => l.trim());
   if (first < 0 || !/^#\s+No firmware\b/i.test(lines[first]!.trim())) return false;
-  return lines.slice(first + 1).some((l) => l.trim() && !l.trim().startsWith('#') && !l.trim().startsWith('<!--'));
+  return lines.slice(first + 1).some((l) => l.trim() && !l.trim().startsWith('#'));
 }
 
 export const STAGES: Stage[] = [
@@ -357,7 +359,7 @@ export const STAGES: Stage[] = [
     },
     prompt: () =>
       'Stage 7: firmware scaffold. Generate firmware/ for the chosen MCU HAL: pins.h generated from PINOUT.md (single source of truth), driver stubs, and one working happy path. If the vendor toolchain is available, the build must pass; if not, note "not compiled here" explicitly in DEVPLAN.md. ' +
-      'Only if the board has nothing programmable on it (every schematic symbol comes from a stock non-programmable KiCad library: Device, Connector*, Diode*, Transistor_*, Regulator_*, Mechanical, power, Power_Protection, LED, Switch, Jumper, Graphic) do not invent code: write firmware/README.md beginning with the heading "# No firmware" and, below it, why, citing the documents that record it (SPEC.md, SUBSYSTEMS.md). The stage gate reads the schematic: a part from any other library, a project library included, still needs source.',
+      'Only if the board has nothing programmable on it (every schematic symbol comes from a stock non-programmable KiCad library: Device, Connector*, Diode*, Transistor_*, Regulator_*, Mechanical, power, Power_Protection, LED, Switch, Jumper, Graphic, Amplifier_Operational, Amplifier_Instrumentation, Comparator, Reference_Voltage, Relay) do not invent code: write firmware/README.md beginning with the heading "# No firmware" and, below it, why, citing the documents that record it (SPEC.md, SUBSYSTEMS.md). The stage gate reads the schematic: a part from any other library, a project library included, still needs source.',
   },
   {
     name: 'devplan',
@@ -578,7 +580,7 @@ async function layoutDraftGap(root: string, docs: string, opts: { drcFailed?: bo
   return null;
 }
 
-async function contractGapDetail(stageName: string, root: string, config: CopperheadConfig): Promise<string> {
+export async function contractGapDetail(stageName: string, root: string, config: CopperheadConfig): Promise<string> {
   const generic = 'the run finished but the stage completion contract is not met — no usable artifact was produced';
   if (stageName === 'part-selection') {
     const r = await bomFootprintMisses(root, config.docs);
@@ -597,7 +599,7 @@ async function contractGapDetail(stageName: string, root: string, config: Copper
     if (parts.length) {
       return (
         `the firmware contract is not met: firmware/README.md says "No firmware", but these schematic parts are not from a stock non-programmable library: ${parts.join(', ')}; ` +
-        'write firmware source for them under firmware/'
+        'if one of them is programmable, write firmware source for it under firmware/; if none of them holds firmware, they are outside the waiver list, so stop for a human rather than inventing code'
       );
     }
   }

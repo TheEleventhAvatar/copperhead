@@ -10,9 +10,10 @@
  */
 import { describe, it, expect } from 'vitest';
 import path from 'node:path';
-import { mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import os from 'node:os';
-import { STAGES } from '../src/commands/create.js';
+import { STAGES, contractGapDetail } from '../src/commands/create.js';
+import { loadConfig } from '../src/config.js';
 
 /** Return the isComplete function for the named stage (throws if not found). */
 function stageNamed(name: string) {
@@ -459,6 +460,84 @@ describe('firmware isComplete: no programmable part', () => {
       await project(root, ['power:GND']);
       await readme(root, NO_FW);
       expect(await stageNamed('firmware')(root, DOCS)).toBe(false);
+    });
+  });
+
+  // Stock analog libraries hold nothing programmable either (#409 review).
+  it.each([
+    'Amplifier_Operational:LM358',
+    'Amplifier_Instrumentation:INA128',
+    'Comparator:LM393',
+    'Reference_Voltage:LM4040DBZ-2.5',
+    'Relay:G5LE-1',
+  ])('returns true for an analog board with %s and a "# No firmware" README', async (libId) => {
+    await withTmpDir(async (root) => {
+      await project(root, [...PASSIVE, libId]);
+      await readme(root, NO_FW);
+      expect(await stageNamed('firmware')(root, DOCS)).toBe(true);
+    });
+  });
+
+  it('returns false when config.json names a schematic file that does not exist', async () => {
+    await withTmpDir(async (root) => {
+      await mkdir(path.join(root, '.copperhead'), { recursive: true });
+      await writeFile(path.join(root, '.copperhead', 'config.json'), JSON.stringify({ schematic: 'missing.kicad_sch', docs: DOCS }), 'utf8');
+      await readme(root, NO_FW);
+      expect(await stageNamed('firmware')(root, DOCS)).toBe(false);
+    });
+  });
+
+  it('returns false when the root sheet points to a missing sub-sheet, which may hold the MCU', async () => {
+    await withTmpDir(async (root) => {
+      await project(root, PASSIVE);
+      const sch = path.join(root, 'board.kicad_sch');
+      await writeFile(
+        sch,
+        (await readFile(sch, 'utf8')).replace(
+          /\)\n$/,
+          '  (sheet (at 0 0) (size 10 10) (uuid "s1")\n    (property "Sheetname" "mcu" (at 0 0 0))\n    (property "Sheetfile" "mcu.kicad_sch" (at 0 0 0)))\n)\n',
+        ),
+        'utf8',
+      );
+      await readme(root, NO_FW);
+      expect(await stageNamed('firmware')(root, DOCS)).toBe(false);
+    });
+  });
+
+  it('returns false for an empty or whitespace-only README', async () => {
+    await withTmpDir(async (root) => {
+      await project(root, PASSIVE);
+      await readme(root, '');
+      expect(await stageNamed('firmware')(root, DOCS)).toBe(false);
+      await readme(root, '  \n\t\n');
+      expect(await stageNamed('firmware')(root, DOCS)).toBe(false);
+    });
+  });
+
+  it('returns false when the only thing below the heading is a multi-line HTML comment', async () => {
+    await withTmpDir(async (root) => {
+      await project(root, PASSIVE);
+      await readme(root, '# No firmware\n\n<!--\nwhy goes here\n-->\n');
+      expect(await stageNamed('firmware')(root, DOCS)).toBe(false);
+    });
+  });
+
+  it('the failure detail names each part outside the waiver list', async () => {
+    await withTmpDir(async (root) => {
+      await project(root, [...PASSIVE, 'fixture:ESP32-S3-MINI']);
+      await readme(root, NO_FW);
+      const detail = await contractGapDetail('firmware', root, await loadConfig(root));
+      expect(detail).toContain('fixture:ESP32-S3-MINI');
+      expect(detail).toContain('outside the waiver list');
+      expect(detail).not.toContain('Device:R');
+    });
+  });
+
+  it('the failure detail says when no schematic with parts could be read', async () => {
+    await withTmpDir(async (root) => {
+      await readme(root, NO_FW);
+      const detail = await contractGapDetail('firmware', root, await loadConfig(root));
+      expect(detail).toContain('no schematic with parts could be read');
     });
   });
 });
