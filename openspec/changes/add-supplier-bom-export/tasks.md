@@ -20,6 +20,7 @@
 - [x] 3.2 Exclusion and `--include-unverified` behavior tests
 - [x] 3.3 Drift-refusal test (edited BOM.md value → non-zero exit, drift hint)
 - [x] 3.4 Network guard: no api.* connections during export (global `fetch` spy asserts zero calls)
+- [x] 3.5 Create-stage BOM commit (#379): committed alone under the outputs stage, no commit for an unchanged CSV, left uncommitted beside other dirty paths, and a commit a pre-commit hook rejects is logged without stopping the run
 
 ## 4. Docs
 

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import path from 'node:path';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, writeFile } from 'node:fs/promises';
 import { execa } from 'execa';
 import { tempFixtureRepo } from './helpers.js';
 import { emitJlcpcbAfterOutputs } from '../src/commands/create.js';
@@ -71,6 +71,24 @@ describe('JLCPCB BOM commit after the outputs stage (#379)', () => {
       const lines = await run(repo);
       expect(await git(repo, ['rev-parse', 'HEAD'])).toBe(head);
       expect(lines.join('\n')).toContain('left outputs/jlcpcb-bom.csv uncommitted');
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('logs a failed commit and carries on, leaving HEAD where it was', async () => {
+    const { repo, cleanup } = await tempFixtureRepo();
+    try {
+      await seedBom(repo);
+      // A user's pre-commit hook that rejects every commit.
+      const hook = path.join(repo, '.git', 'hooks', 'pre-commit');
+      await mkdir(path.dirname(hook), { recursive: true });
+      await writeFile(hook, '#!/bin/sh\necho "rejected by test hook" >&2\nexit 1\n', 'utf8');
+      await chmod(hook, 0o755);
+      const head = await git(repo, ['rev-parse', 'HEAD']);
+      const lines = await run(repo);
+      expect(lines.join('\n')).toContain('could not commit outputs/jlcpcb-bom.csv');
+      expect(await git(repo, ['rev-parse', 'HEAD'])).toBe(head);
     } finally {
       await cleanup();
     }
