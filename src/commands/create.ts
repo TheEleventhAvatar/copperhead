@@ -580,23 +580,27 @@ const BRING_UP = /\bbring[-\u2010-\u2014 \u00a0]?up\b/i;
 /**
  * The document's lines, each with its heading level (0 for a non-heading),
  * reading a line inside a fenced code block as content: a `# comment` in a
- * stage-7 shell snippet is not a heading.
+ * stage-7 shell snippet is not a heading. `unclosedFence` is the 1-based line
+ * of a fence the document never closes, so everything after it is code.
  */
-function markdownLines(text: string): { level: number; text: string }[] {
-  let fence: string | null = null;
-  return text.split(/\r?\n/).map((line) => {
+function markdownLines(text: string): { lines: { level: number; text: string }[]; unclosedFence: number | null } {
+  let fence: { marker: string; line: number } | null = null;
+  const lines: { level: number; text: string }[] = [];
+  for (const [i, line] of text.split(/\r?\n/).entries()) {
     const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
-    if (fence) {
-      if (marker && marker[0] === fence[0] && marker.length >= fence.length && !line.trim().slice(marker.length).trim()) fence = null;
-      return { level: 0, text: line };
-    }
-    if (marker) {
-      fence = marker;
-      return { level: 0, text: line };
-    }
     const h = /^ {0,3}(#{1,6})(?:[ \t]+(.*))?$/.exec(line);
-    return h ? { level: h[1]!.length, text: h[2] ?? '' } : { level: 0, text: line };
-  });
+    if (fence) {
+      // closed only by the same character, at least as long, with nothing after it
+      if (marker && marker[0] === fence.marker[0] && marker.length >= fence.marker.length && !line.trim().slice(marker.length).trim()) fence = null;
+      lines.push({ level: 0, text: line });
+    } else if (marker) {
+      fence = { marker, line: i + 1 };
+      lines.push({ level: 0, text: line });
+    } else {
+      lines.push(h ? { level: h[1]!.length, text: h[2] ?? '' } : { level: 0, text: line });
+    }
+  }
+  return { lines, unclosedFence: fence?.line ?? null };
 }
 
 /**
@@ -609,9 +613,13 @@ export async function devplanGap(root: string, docs: string): Promise<string | n
   const devplanDoc = path.posix.join(docs, 'DEVPLAN.md');
   const p = path.join(root, devplanDoc);
   if (!existsSync(p)) return `${devplanDoc} does not exist`;
-  const lines = markdownLines(await readFile(p, 'utf8'));
+  const { lines, unclosedFence } = markdownLines(await readFile(p, 'utf8'));
   const starts = lines.flatMap((l, i) => (l.level && BRING_UP.test(l.text) ? [i] : []));
   if (!starts.length) {
+    // the model can see its heading in the file, so name the fence that hides it
+    if (unclosedFence !== null) {
+      return `${devplanDoc} has a code fence opened at line ${unclosedFence} that is never closed, so everything after it (including any "## Bring-up") reads as code`;
+    }
     return `${devplanDoc} has no "## Bring-up" heading (a Markdown heading line; bold text or another section name does not count)`;
   }
   const hasContent = (start: number): boolean => {

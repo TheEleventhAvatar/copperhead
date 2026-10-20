@@ -719,6 +719,35 @@ describe('devplan bring-up heading and failure detail (#378)', () => {
     });
   });
 
+  it('names a code fence the document never closes when it hides the bring-up heading', async () => {
+    await withTmpDir(async (root) => {
+      await write(root, '# DEVPLAN\n\n## Firmware: not compiled here\n\n```sh\nidf.py build\n\n## Bring-up\n\n1. Measure the 3.3 V rail.\n');
+      expect(await stageNamed('devplan')(root, DOCS)).toBe(false);
+      expect(await devplanGap(root, DOCS)).toBe(
+        'docs/DEVPLAN.md has a code fence opened at line 5 that is never closed, so everything after it (including any "## Bring-up") reads as code',
+      );
+    });
+  });
+
+  it('closes a fence with a longer one, but not with a line that has text after the fence', async () => {
+    await withTmpDir(async (root) => {
+      await write(root, '# DEVPLAN\n\n```sh\n# bring up the toolchain\n`````\n\n## Bring-up\n\n1. Measure the 3.3 V rail.\n');
+      expect(await stageNamed('devplan')(root, DOCS)).toBe(true);
+      // "```sh" opens a fence; inside one it is code, not a close, so the fence stays open
+      await write(root, '# DEVPLAN\n\n```\nidf.py build\n```sh\n\n## Bring-up\n\n1. Measure the 3.3 V rail.\n');
+      expect(await devplanGap(root, DOCS)).toBe(
+        'docs/DEVPLAN.md has a code fence opened at line 3 that is never closed, so everything after it (including any "## Bring-up") reads as code',
+      );
+    });
+  });
+
+  it('a bare "##" line is an empty heading that ends the bring-up section', async () => {
+    await withTmpDir(async (root) => {
+      await write(root, '# DEVPLAN\n\n## Bring-up\n\n##\n\n1. Measure the 3.3 V rail.\n');
+      expect(await devplanGap(root, DOCS)).toBe('docs/DEVPLAN.md has a "## Bring-up" heading with nothing under it');
+    });
+  });
+
   it('the stage failure detail names the missing heading', async () => {
     await withTmpDir(async (root) => {
       await write(root, '# DEVPLAN\n\n**Bring-up**\n\n1. Measure the 3.3 V rail.\n');
