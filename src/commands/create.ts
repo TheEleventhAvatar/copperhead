@@ -146,7 +146,7 @@ const FIRMWARE_SOURCE_EXTS = ['.c', '.h', '.cpp', '.hpp', '.py', '.rs', '.ino', 
  * excuses the stage.
  */
 const NON_PROGRAMMABLE_LIB =
-  /^(Device|Connector(_\w+)?|Diode(_\w+)?|Transistor_\w+|Regulator_\w+|Mechanical|power|Power_Protection|LED|Switch|Jumper|Graphic|Amplifier_Operational|Amplifier_Instrumentation|Comparator|Reference_Voltage|Relay)$/;
+  /^(Device|Connector(_\w+)?|Diode(_\w+)?|Transistor_\w+|Regulator_\w+|Mechanical|power|Power_Protection|LED|Switch|Jumper|Graphic|Amplifier_Operational|Amplifier_Instrumentation|Comparator|Reference_Voltage|Relay|Timer)$/;
 
 /**
  * The schematic's parts that could hold firmware, by the library their symbol
@@ -362,7 +362,7 @@ export const STAGES: Stage[] = [
     },
     prompt: () =>
       'Stage 7: firmware scaffold. Generate firmware/ for the chosen MCU HAL: pins.h generated from PINOUT.md (single source of truth), driver stubs, and one working happy path. If the vendor toolchain is available, the build must pass; if not, note "not compiled here" explicitly in DEVPLAN.md. ' +
-      'Only if the board has nothing programmable on it (every schematic symbol comes from a stock non-programmable KiCad library: Device, Connector*, Diode*, Transistor_*, Regulator_*, Mechanical, power, Power_Protection, LED, Switch, Jumper, Graphic, Amplifier_Operational, Amplifier_Instrumentation, Comparator, Reference_Voltage, Relay) do not invent code: write firmware/README.md beginning with the heading "# No firmware" and, below it, why, citing the documents that record it (SPEC.md, SUBSYSTEMS.md). The stage gate reads the schematic: a part from any other library, a project library included, still needs source.',
+      'Only if the board has nothing programmable on it (every schematic symbol comes from a stock non-programmable KiCad library: Device, Connector*, Diode*, Transistor_*, Regulator_*, Mechanical, power, Power_Protection, LED, Switch, Jumper, Graphic, Amplifier_Operational, Amplifier_Instrumentation, Comparator, Reference_Voltage, Relay, Timer) do not invent code: write firmware/README.md beginning with the heading "# No firmware" and, below it, why, citing the documents that record it (SPEC.md, SUBSYSTEMS.md). The stage gate reads the schematic: a part from any other library, a project library included, still needs source.',
   },
   {
     name: 'devplan',

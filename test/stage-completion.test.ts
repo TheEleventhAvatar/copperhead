@@ -390,6 +390,8 @@ describe('firmware isComplete: no programmable part', () => {
     await writeFile(path.join(root, 'firmware', 'README.md'), text, 'utf8');
   }
 
+  const firmwarePrompt = (): string => STAGES.find((x) => x.name === 'firmware')!.prompt('brief', 'docs/');
+
   const PASSIVE = ['Device:R', 'Device:R', 'Device:Polyfuse', 'Device:LED', 'Connector:USB_C_Receptacle_PowerOnly_6P', 'Connector_Generic:Conn_02x02_Odd_Even', 'Mechanical:MountingHole', 'power:GND'];
 
   it('returns true for a passive board with a "# No firmware" README', async () => {
@@ -470,11 +472,26 @@ describe('firmware isComplete: no programmable part', () => {
     'Comparator:LM393',
     'Reference_Voltage:LM4040DBZ-2.5',
     'Relay:G5LE-1',
+    'Timer:TLC555xD',
   ])('returns true for an analog board with %s and a "# No firmware" README', async (libId) => {
     await withTmpDir(async (root) => {
       await project(root, [...PASSIVE, libId]);
       await readme(root, NO_FW);
       expect(await stageNamed('firmware')(root, DOCS)).toBe(true);
+    });
+    // the stage-7 prompt names every library the gate accepts, so the model knows the waiver applies
+    expect(firmwarePrompt()).toContain(libId.split(':')[0]);
+  });
+
+  it('the stage-7 prompt tells the model how to write the waiver', () => {
+    expect(firmwarePrompt()).toContain('# No firmware');
+  });
+
+  it('returns false for a real-time clock, which Timer does not cover', async () => {
+    await withTmpDir(async (root) => {
+      await project(root, [...PASSIVE, 'Timer_RTC:DS3231M']);
+      await readme(root, NO_FW);
+      expect(await stageNamed('firmware')(root, DOCS)).toBe(false);
     });
   });
 

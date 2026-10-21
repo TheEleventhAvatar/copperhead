@@ -46,7 +46,7 @@ The firmware scaffold SHALL compile clean against the vendor toolchain when one 
 - **THEN** the scaffold and pins.h are still produced and DEVPLAN.md carries an explicit "not compiled here" flag
 
 #### Scenario: No programmable part
-- **WHEN** every schematic symbol comes from a stock non-programmable KiCad library (`Device`, `Connector*`, `Diode*`, `Transistor_*`, `Regulator_*`, `Mechanical`, `power`, `Power_Protection`, `LED`, `Switch`, `Jumper`, `Graphic`, `Amplifier_Operational`, `Amplifier_Instrumentation`, `Comparator`, `Reference_Voltage`, `Relay`) and `firmware/README.md` begins `# No firmware` with a reason below it (an HTML comment is not one)
+- **WHEN** every schematic symbol comes from a stock non-programmable KiCad library (`Device`, `Connector*`, `Diode*`, `Transistor_*`, `Regulator_*`, `Mechanical`, `power`, `Power_Protection`, `LED`, `Switch`, `Jumper`, `Graphic`, `Amplifier_Operational`, `Amplifier_Instrumentation`, `Comparator`, `Reference_Voltage`, `Relay`, `Timer`) and `firmware/README.md` begins `# No firmware` with a reason below it (an HTML comment is not one)
 - **THEN** the firmware stage completes with no source under `firmware/`
 
 #### Scenario: Unknown part never waives firmware
