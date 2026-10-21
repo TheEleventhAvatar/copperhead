@@ -741,6 +741,35 @@ describe('devplan bring-up heading and failure detail (#378)', () => {
     });
   });
 
+  it('returns true when a stage-7 line starts with an inline ``` code span (not a fence)', async () => {
+    await withTmpDir(async (root) => {
+      await write(root, '# DEVPLAN\n\n## Firmware: not compiled here\n\n```idf.py build``` needs ESP-IDF.\n\n## Bring-up\n\n1. Measure the 3.3 V rail.\n');
+      expect(await stageNamed('devplan')(root, DOCS)).toBe(true);
+    });
+  });
+
+  it('returns false when the bring-up section holds only a thematic break or an HTML comment', async () => {
+    await withTmpDir(async (root) => {
+      for (const filler of ['---', '<!-- steps go here -->']) {
+        await write(root, `## Bring-up\n\n${filler}\n\n## Risks\n\n- none\n`);
+        expect(await stageNamed('devplan')(root, DOCS), filler).toBe(false);
+        expect(await devplanGap(root, DOCS), filler).toBe('docs/DEVPLAN.md has a "## Bring-up" heading with nothing under it');
+      }
+    });
+  });
+
+  it('keeps a fence open on a closer of the other character or a shorter run', async () => {
+    await withTmpDir(async (root) => {
+      const missing = 'docs/DEVPLAN.md has no "## Bring-up" heading';
+      // a ~~~ line inside a backtick fence, and a ``` line inside a ```` fence, close nothing
+      for (const doc of ['# DEVPLAN\n\n```sh\n~~~\n# bring up the toolchain\n```\n', '# DEVPLAN\n\n````sh\n```\n# bring up the toolchain\n````\n']) {
+        await write(root, doc);
+        expect(await stageNamed('devplan')(root, DOCS), doc).toBe(false);
+        expect(await devplanGap(root, DOCS), doc).toContain(missing);
+      }
+    });
+  });
+
   it('a bare "##" line is an empty heading that ends the bring-up section', async () => {
     await withTmpDir(async (root) => {
       await write(root, '# DEVPLAN\n\n## Bring-up\n\n##\n\n1. Measure the 3.3 V rail.\n');

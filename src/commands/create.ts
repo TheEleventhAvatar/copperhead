@@ -587,7 +587,8 @@ function markdownLines(text: string): { lines: { level: number; text: string }[]
   let fence: { marker: string; line: number } | null = null;
   const lines: { level: number; text: string }[] = [];
   for (const [i, line] of text.split(/\r?\n/).entries()) {
-    const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
+    // a backtick run with another backtick later on the line is inline code, not a fence
+    const marker = /^ {0,3}(`{3,}(?!.*`)|~{3,})/.exec(line)?.[1];
     const h = /^ {0,3}(#{1,6})(?:[ \t]+(.*))?$/.exec(line);
     if (fence) {
       // closed only by the same character, at least as long, with nothing after it
@@ -622,12 +623,18 @@ export async function devplanGap(root: string, docs: string): Promise<string | n
     }
     return `${devplanDoc} has no "## Bring-up" heading (a Markdown heading line; bold text or another section name does not count)`;
   }
+  // HTML comments and thematic breaks are not bring-up steps (as the Draft quality gate strips comments)
   const hasContent = (start: number): boolean => {
+    const body: string[] = [];
     for (const l of lines.slice(start + 1)) {
-      if (l.level && l.level <= lines[start]!.level) return false;
-      if (!l.level && l.text.trim()) return true;
+      if (l.level && l.level <= lines[start]!.level) break;
+      if (!l.level) body.push(l.text);
     }
-    return false;
+    return body
+      .join('\n')
+      .replace(/<!--[\s\S]*?-->/g, '')
+      .split('\n')
+      .some((t) => t.trim() && !/^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/.test(t));
   };
   return starts.some(hasContent) ? null : `${devplanDoc} has a "## Bring-up" heading with nothing under it`;
 }
