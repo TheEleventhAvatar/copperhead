@@ -142,6 +142,8 @@ for (const { model, key } of providers) {
           await execa('git', ['add', '-A'], { cwd: repo });
           await execa('git', ['commit', '-q', '-m', 'strapping table'], { cwd: repo });
 
+          const sch = path.join(repo, 'hardware', 'open-key.kicad_sch');
+          const schBefore = await readFile(sch, 'utf8');
           const res = await runAgentLoop({
             repoRoot: repo,
             request: 'move the key input to a different RTC-capable pin',
@@ -151,20 +153,26 @@ for (const { model, key } of providers) {
           });
           expect(res.outcome, res.summary).toBe('success');
 
-          const sch = path.join(repo, 'hardware', 'open-key.kicad_sch');
           const keyPins = (await pinNets(sch)).filter((p) => p.ref === 'U1' && p.net === 'KEY_DAH').map((p) => p.pinName);
           expect(keyPins, 'KEY_DAH must sit on exactly one U1 pin').toHaveLength(1);
           expect(['GPIO18', 'GPIO21'], `KEY_DAH moved to ${keyPins[0]}`).toContain(keyPins[0]);
           // schematic and PINOUT.md agree, and ERC is clean
           expect(await checkDrift(repo, 'docs', 'hardware/open-key.kicad_sch')).toEqual([]);
           expect((await runErc(sch)).ok).toBe(true);
-          // the strapping table was consulted: the model's own reasoning names it
+          // AC-3.7: surgical edit, < 5% of schematic lines changed
+          expect(diffLineCount(schBefore, await readFile(sch, 'utf8')) / schBefore.split('\n').length).toBeLessThan(0.05);
+          // the strapping table was consulted: the model's own text (not tool-call
+          // arguments, which can copy seeded file text) names the seeded table,
+          // pins.strapping or a forbidden pin given as a strapping pin
           const events = (await readFile(path.join(res.transcriptDir, 'transcript.jsonl'), 'utf8'))
             .split('\n')
             .filter(Boolean)
             .map((l) => JSON.parse(l) as { type: string; data: unknown });
-          const reasoning = events.filter((e) => e.type === 'assistant').map((e) => JSON.stringify(e.data)).join('\n');
-          expect(reasoning).toMatch(/strapping/i);
+          const reasoning = events
+            .filter((e) => e.type === 'assistant')
+            .map((e) => (e.data as { text?: string | null }).text ?? '')
+            .join('\n');
+          expect(reasoning).toMatch(/\bGPIO(0|3|45|46)\b[^\n]{0,80}strapping|strapping[^\n]{0,80}\bGPIO(0|3|45|46)\b|pins\.strapping/i);
         } finally {
           await cleanup();
         }
