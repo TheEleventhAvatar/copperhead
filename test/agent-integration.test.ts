@@ -8,9 +8,10 @@ import { runInit } from '../src/memory/scaffold.js';
 import { toolSearch } from '../src/agent/filetools.js';
 import { saveConstraint } from '../src/memory/constraints.js';
 import { checkDrift } from '../src/memory/drift.js';
-import { pinNets } from '../src/kicad/sexp.js';
+import { listSymbols, pinNets } from '../src/kicad/sexp.js';
 import { runErc } from '../src/kicad/cli.js';
-import { tempFixtureRepo } from './helpers.js';
+import { FootprintResolver, missingFootprints } from '../src/kicad/footprints.js';
+import { tempFixtureRepo, RGB_FIXTURE } from './helpers.js';
 
 /**
  * Live agent-loop tests (AC-3.x). These call a real LLM: they run only when an
@@ -60,8 +61,8 @@ function claudeCodeSdkInstalled(): boolean {
   }
 }
 
-async function setupRepo(): Promise<{ repo: string; cleanup: () => Promise<void> }> {
-  const { repo, cleanup } = await tempFixtureRepo();
+async function setupRepo(fixture?: string): Promise<{ repo: string; cleanup: () => Promise<void> }> {
+  const { repo, cleanup } = await tempFixtureRepo(fixture);
   await runInit({ repoRoot: repo, installHooks: false });
   // the 25 µA sleep budget that powers AC-3.4
   await saveConstraint(repo, 'power.sleep_current_uA', {
@@ -178,6 +179,66 @@ for (const { model, key } of providers) {
         }
       },
       900_000,
+    );
+
+    it(
+      'AC-3.3: a second RGB LED gets a unique refdes, an installed footprint, a GPIO net, and an UNVERIFIED BOM row',
+      async () => {
+        // rgb-key: open-key plus D1, an RGB LED on GPIO4/5/6 through R3-R5, with
+        // GPIO7/8/9/18/21 free for a second one (fixtures/rgb-key-source/README.md)
+        const { repo, cleanup } = await setupRepo(RGB_FIXTURE);
+        try {
+          // document the sheet's three groups, as a real project would
+          await appendFile(
+            path.join(repo, 'docs', 'SUBSYSTEMS.md'),
+            '\n## MCU\n\nESP32-S3 module and its enable pull-up.\n\n## Keyer\n\nKey input block.\n\n## Indicator\n\nRGB status LED.\n',
+          );
+          await execa('git', ['add', '-A'], { cwd: repo });
+          await execa('git', ['commit', '-q', '-m', 'document subsystems'], { cwd: repo });
+
+          const sch = path.join(repo, 'hardware', 'rgb-key.kicad_sch');
+          const before = new Set((await listSymbols(sch)).map((s) => s.ref));
+          const res = await runAgentLoop({
+            repoRoot: repo,
+            request: 'add a second RGB LED',
+            model,
+            maxTurns: 60,
+            log: () => {},
+          });
+          expect(res.outcome, res.summary).toBe('success');
+
+          const after = (await listSymbols(sch)).filter((s) => s.unit === 1);
+          expect(new Set(after.map((s) => s.ref)).size, 'every refdes is unique').toBe(after.length);
+          const added = after.filter((s) => !before.has(s.ref));
+          const leds = added.filter((s) => /led/i.test(`${s.libId} ${s.value}`));
+          expect(leds.length, `added: ${added.map((s) => `${s.ref} ${s.libId}`).join(', ')}`).toBeGreaterThan(0);
+
+          // every added part has a footprint that resolves to an installed library footprint
+          const resolver = await FootprintResolver.create({ projectDir: path.dirname(sch) });
+          expect(await missingFootprints(added.map((s) => ({ ref: s.ref, footprint: s.footprint })), resolver)).toEqual([]);
+
+          // the new parts connect to a real GPIO: a net they share with a U1 GPIO pin
+          const pins = await pinNets(sch);
+          const gpioNets = new Set(pins.filter((p) => p.ref === 'U1' && /^GPIO/.test(p.pinName) && p.net).map((p) => p.net));
+          const addedRefs = new Set(added.map((s) => s.ref));
+          expect(pins.some((p) => addedRefs.has(p.ref) && p.net !== null && gpioNets.has(p.net))).toBe(true);
+
+          // BOM.md gains a row per new LED: MPN flagged UNVERIFIED, with a rationale
+          const bomRows = (await readFile(path.join(repo, 'docs', 'BOM.md'), 'utf8')).split('\n').filter((l) => l.startsWith('|'));
+          for (const led of leds) {
+            const row = bomRows.find((l) => l.split('|').map((c) => c.trim()).some((c) => c.split(/[,\s]+/).includes(led.ref)));
+            expect(row, `no BOM.md row for ${led.ref}`).toBeDefined();
+            expect(row).toMatch(/UNVERIFIED/);
+            const cells = row!.split('|').map((c) => c.trim()).slice(1, -1);
+            expect(cells[cells.length - 1], `${led.ref} has no rationale`).toBeTruthy();
+          }
+          expect((await runErc(sch)).ok).toBe(true);
+        } finally {
+          await cleanup();
+        }
+      },
+      // adding a part takes many edit turns, and a claude-code turn ran about 90 s live
+      1_800_000,
     );
 
     it(
