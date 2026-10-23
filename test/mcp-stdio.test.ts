@@ -109,7 +109,8 @@ describe('copperhead mcp over real stdio', () => {
     const res = await client.callTool(
       { name: 'copperhead_do', arguments: { request: 'rename R1 to R10' } },
       undefined,
-      { onprogress: (p) => void seen.push(p) },
+      // the SDK's default request timeout is 60 s; the run gets the test's own budget
+      { onprogress: (p) => void seen.push(p), timeout: 170_000 },
     );
     // The scripted run declines, so the result is a refusal; what matters here
     // is that the notifications sent during the run reached this side.

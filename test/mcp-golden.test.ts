@@ -64,7 +64,9 @@ async function rawPeer(repo: string): Promise<{
   await server.connect(serverTransport);
   await peer.start();
   let next = 1;
-  const sanitize = (m: JSONRPCMessage): JSONRPCMessage => JSON.parse(JSON.stringify(m).split(repo).join('<REPO>'));
+  // match the path as it appears inside serialized JSON (backslashes escaped on Windows)
+  const repoInJson = JSON.stringify(repo).slice(1, -1);
+  const sanitize = (m: JSONRPCMessage): JSONRPCMessage => JSON.parse(JSON.stringify(m).split(repoInJson).join('<REPO>'));
   return {
     async send(method, params) {
       const request = { jsonrpc: '2.0', id: next++, method, ...(params ? { params } : {}) } as JSONRPCMessage;

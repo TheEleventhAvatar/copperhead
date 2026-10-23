@@ -20,7 +20,7 @@ The entry points already exist and return structured results (`runCheck`, `syncV
 - [x] 2.6 Implement per-repo serialization of mutating tools with typed busy error; concurrent check allowed
 - [x] 2.7 Declare the unstable `copperhead-mcp/0.x` protocol version, announce experimental status on stderr at startup, and state instability in the server metadata
 - [x] 2.8 Wire `copperhead mcp [--repo]` into the CLI with the experimental marker in its description and the bad-path error
-- [x] 2.9 Assert stdout discipline for the keyless tools: a real stdio handshake plus `check`/`doctor` calls prove stdout carries only JSON-RPC. The `do` / `sync --resolve` paths are argued safe by construction (they pass `renderer`, which short-circuits the loop's only `console.log`) but are not covered by a test
+- [x] 2.9 Assert stdout discipline for the keyless tools: a real stdio handshake plus `check`/`doctor` calls prove stdout carries only JSON-RPC. The `do` path is covered by the 3.1a stdio progress test, which runs `copperhead_do` through the real `createMcpServer`, `runAgentLoop` and `mcpRenderer` on the real stdio transport (via the test-only `test/fixtures/mcp/scripted-server.ts` entry, not `copperhead mcp` itself). `sync --resolve` is still argued safe by construction (it passes `renderer`, which short-circuits the loop's only `console.log`) and is not covered by a test
 
 ## 3. Tests
 

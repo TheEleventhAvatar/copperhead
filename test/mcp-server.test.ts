@@ -490,7 +490,12 @@ describe('copperhead_do: rollback is a result, not an error (3.3a)', () => {
     process.env.COPPERHEAD_MODEL = 'gpt-5';
     let res;
     try {
-      res = await client.callTool({ name: 'copperhead_do', arguments: { request: 'move the GPIO0 no-connect flag' } });
+      // the SDK's default request timeout is 60 s; the run gets the test's own budget
+      res = await client.callTool(
+        { name: 'copperhead_do', arguments: { request: 'move the GPIO0 no-connect flag' } },
+        undefined,
+        { timeout: 170_000 },
+      );
     } finally {
       if (saved === undefined) delete process.env.COPPERHEAD_MODEL;
       else process.env.COPPERHEAD_MODEL = saved;
