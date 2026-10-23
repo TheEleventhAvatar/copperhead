@@ -25,10 +25,10 @@ The entry points already exist and return structured results (`runCheck`, `syncV
 ## 3. Tests
 
 - [x] 3.1 Protocol test over real stdio: handshake, tool list, and a `check` and `doctor` round trip against the pinned protocol version
-- [ ] 3.1a Golden request/response fixtures, and a progress-notification test over stdio — `mcpRenderer` is unit-tested, but nothing asserts a notification actually reaches a host
+- [x] 3.1a Golden request/response fixtures (`test/fixtures/mcp/`, raw JSON-RPC for the handshake, the tool list and the deterministic error results, refreshed only with `COPPERHEAD_UPDATE_GOLDENS=1`), and a progress-notification test over stdio: a scripted `copperhead_do` run on the real stdio transport, asserting its `notifications/progress` reach the host
 - [x] 3.2 Parity test: `copperhead_check` result equals `check --json` on the same repo state
 - [x] 3.3 Keyless degradation tests; serialization/busy test (asserted unconditionally, so deleting the lock fails it)
-- [ ] 3.3a Rollback-as-result test: nothing yet asserts the delta spec's scenario that the working tree is byte-identical to the pre-run state after `rolled_back`. Needs a provider seam on `createMcpServer` to drive `copperhead_do` without a live model
+- [x] 3.3a Rollback-as-result test: a scripted `copperhead_do` run whose ERC violations persist past `maxRepairCycles` returns `rolled_back` as a successful call, and the working tree is byte-identical to the pre-run state. Driven through an optional `provider` test seam on `createMcpServer` (absent outside tests, not a tool input)
 - [x] 3.4 Surface audit test (required, not follow-up): enumerate registered tools and assert none accepts a filesystem path, drives a single loop step, or mutates files outside the gated pipeline
 - [x] 3.4a Assert the five pipeline tool names resolve to nothing in the agent capability catalog, so the pipeline can never be invoked from inside the loop it runs (design D9)
 - [x] 3.4b Assert a result carrying a fake API key in its text comes back redacted, proving the envelope path is actually used
