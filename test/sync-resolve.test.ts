@@ -8,7 +8,8 @@ import { execa } from 'execa';
 import { runInit } from '../src/memory/scaffold.js';
 import { saveConstraint, loadConstraints } from '../src/memory/constraints.js';
 import { syncVerify, syncResolve } from '../src/commands/sync.js';
-import { runCheck } from '../src/commands/check.js';
+import { checkDrift } from '../src/memory/drift.js';
+import { loadConfig } from '../src/config.js';
 import type { Provider, Turn } from '../src/agent/types.js';
 import { tempFixtureRepo } from './helpers.js';
 
@@ -132,13 +133,17 @@ describe('copperhead sync on a requirement violation (AC-7.3)', () => {
     const res = await sync(repo);
     expect(res.exitCode).toBe(2);
     expect(res.stdout).toContain('GPIO14');
+    // both sides and the governing spec: the flag, the net on the pin, and its source
+    expect(res.stdout).toMatch(/REQUIREMENT VIOLATION/);
+    expect(res.stdout).toContain('KEY_DAH');
+    expect(res.stdout).toContain('esp32-s3 datasheet');
     expect(await git(repo, ['rev-parse', 'HEAD'])).toBe(head);
     expect(await treeHashes(repo)).toEqual(before);
   }, 180_000);
 });
 
 describe('copperhead sync resolve phase lands each kind of drift', () => {
-  it('doc drift: BOM.md is brought back to the as-built schematic, then check reports drift clean (AC-7.1)', async () => {
+  it('doc drift: BOM.md is brought back to the as-built schematic, with DECISIONS and CHANGELOG entries in one commit, and drift is clean after (AC-7.1)', async () => {
     const repo = await initializedRepo();
     const bomPath = path.join(repo, 'docs', 'BOM.md');
     await writeFile(bomPath, (await readFile(bomPath, 'utf8')).replace('| R1 | 10k |', '| R1 | 47k |'), 'utf8');
@@ -151,15 +156,20 @@ describe('copperhead sync resolve phase lands each kind of drift', () => {
         toolCalls: [
           { name: 'edit_file', args: { path: 'docs/BOM.md', old_string: '| R1 | 47k |', new_string: '| R1 | 10k |' } },
           { name: 'check_drift', args: {} },
+          // The resolve path does not enforce the DECISIONS.md entry AC-7.1 asks for:
+          // record_decision is left to the model, and a run without it still commits.
+          // The script plays the call a compliant run makes (follow-up: enforce it).
+          { name: 'record_decision', args: { decision: 'BOM.md R1 restored to 10k', rationale: 'the schematic is ground truth for as-built values', affects: 'R1, docs/BOM.md' } },
         ],
       },
       finish,
     ]);
     expect(res.ok, res.summary).toBe(true);
     expect(res.commits, 'the resolve run lands as a single commit').toBe(1);
-    expect(res.files).toEqual(expect.arrayContaining(['docs/BOM.md', 'docs/CHANGELOG.md']));
+    expect(res.files).toEqual(expect.arrayContaining(['docs/BOM.md', 'docs/DECISIONS.md', 'docs/CHANGELOG.md']));
     expect(await git(repo, ['status', '--porcelain'])).toBe('');
-    expect((await runCheck(repo, () => {})).drift.ok).toBe(true);
+    const config = await loadConfig(repo);
+    expect(await checkDrift(repo, config.docs, config.schematic!)).toEqual([]);
     expect((await syncVerify(repo)).resolvable).toEqual([]);
   }, 180_000);
 
@@ -191,11 +201,13 @@ describe('copperhead sync resolve phase lands each kind of drift', () => {
     expect((await syncVerify(repo)).resolvable).toEqual([]);
   }, 180_000);
 
-  it('dual-write gap, config to registry: a configured budget missing from constraints.json gets recorded (AC-7.2)', async () => {
+  // This covers the config-budget form syncVerify implements. The doc-stated form AC-7.2
+  // describes (a constraint stated in a doc but missing from constraints.json) is not detected today.
+  it('dual-write gap, config to registry: a configured budget missing from constraints.json gets recorded and documented (AC-7.2)', async () => {
     const repo = await initializedRepo();
     const configPath = path.join(repo, '.copperhead', 'config.json');
     const config = JSON.parse(await readFile(configPath, 'utf8'));
-    await writeFile(configPath, JSON.stringify({ ...config, budgets: { sleep_current_uA: 25 } }, null, 2) + '\n', 'utf8');
+    await writeFile(configPath, JSON.stringify({ ...config, budgets: { standby_current_uA: 40 } }, null, 2) + '\n', 'utf8');
     await commitAll(repo, 'configure a budget');
     expect((await syncVerify(repo)).resolvable.map((i) => i.kind)).toEqual(['dual-write']);
 
@@ -205,8 +217,8 @@ describe('copperhead sync resolve phase lands each kind of drift', () => {
       unlock,
       {
         toolCalls: [
-          { name: 'record_constraint', args: { key: 'power.sleep_current_uA', max: 25, source: 'docs/SPEC.md', affects: [] } },
-          { name: 'edit_file', args: { path: 'docs/SPEC.md', old_string: anchor, new_string: `${anchor}\n\n- sleep_current_uA: 25 (max)` } },
+          { name: 'record_constraint', args: { key: 'power.standby_current_uA', max: 40, source: 'docs/SPEC.md', affects: [] } },
+          { name: 'edit_file', args: { path: 'docs/SPEC.md', old_string: anchor, new_string: `${anchor}\n\n- standby_current_uA: 40 (max)` } },
           { name: 'check_drift', args: {} },
         ],
       },
@@ -215,7 +227,8 @@ describe('copperhead sync resolve phase lands each kind of drift', () => {
     expect(res.ok, res.summary).toBe(true);
     expect(res.commits).toBe(1);
     expect(res.files).toEqual(expect.arrayContaining(['.copperhead/constraints.json', 'docs/SPEC.md', 'docs/CHANGELOG.md']));
-    expect(Object.keys(await loadConstraints(repo))).toContain('power.sleep_current_uA');
+    expect(Object.keys(await loadConstraints(repo))).toContain('power.standby_current_uA');
+    expect(await readFile(path.join(repo, 'docs', 'SPEC.md'), 'utf8')).toContain('standby_current_uA');
     expect((await syncVerify(repo)).resolvable).toEqual([]);
   }, 180_000);
 });
