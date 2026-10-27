@@ -198,11 +198,19 @@ for (const { model, key } of providers) {
 
           const sch = path.join(repo, 'hardware', 'rgb-key.kicad_sch');
           const before = new Set((await listSymbols(sch)).map((s) => s.ref));
+          // what is free before the run, so a second LED must be driven on its own pins
+          const pinsBefore = await pinNets(sch);
+          const freeGpios = new Set(pinsBefore.filter((p) => p.ref === 'U1' && /^GPIO/.test(p.pinName) && !p.net).map((p) => p.pinName));
+          const d1Nets = new Set(
+            pinsBefore.filter((p) => ['D1', 'R3', 'R4', 'R5'].includes(p.ref) && p.net && p.net !== '3V3').map((p) => p.net!),
+          );
           const res = await runAgentLoop({
             repoRoot: repo,
             request: 'add a second RGB LED',
             model,
-            maxTurns: 60,
+            // 16 turns at the ~90 s a claude-code turn took live is about 24 min, inside the
+            // 30 min test limit, so the loop ends on its own terms and res.summary says where
+            maxTurns: 16,
             log: () => {},
           });
           expect(res.outcome, res.summary).toBe('success');
@@ -217,20 +225,36 @@ for (const { model, key } of providers) {
           const resolver = await FootprintResolver.create({ projectDir: path.dirname(sch) });
           expect(await missingFootprints(added.map((s) => ({ ref: s.ref, footprint: s.footprint })), resolver)).toEqual([]);
 
-          // the new parts connect to a real GPIO: a net they share with a U1 GPIO pin
+          // the new parts are driven on their own GPIOs: they reach at least three of the
+          // GPIOs that were free before the run, and share none of D1's channel nets
           const pins = await pinNets(sch);
-          const gpioNets = new Set(pins.filter((p) => p.ref === 'U1' && /^GPIO/.test(p.pinName) && p.net).map((p) => p.net));
           const addedRefs = new Set(added.map((s) => s.ref));
-          expect(pins.some((p) => addedRefs.has(p.ref) && p.net !== null && gpioNets.has(p.net))).toBe(true);
+          const newGpioNet = new Map(
+            pins.filter((p) => p.ref === 'U1' && freeGpios.has(p.pinName) && p.net).map((p) => [p.net!, p.pinName]),
+          );
+          const reached = new Set(
+            pins.filter((p) => addedRefs.has(p.ref) && p.net && newGpioNet.has(p.net)).map((p) => newGpioNet.get(p.net!)),
+          );
+          expect(reached.size, `GPIOs reached by new parts: ${[...reached].join(', ')}`).toBeGreaterThanOrEqual(3);
+          expect(
+            pins.filter((p) => addedRefs.has(p.ref) && p.net && d1Nets.has(p.net)).map((p) => `${p.ref}.${p.pinName}=${p.net}`),
+            'new parts must not share D1 channel nets',
+          ).toEqual([]);
 
-          // BOM.md gains a row per new LED: MPN flagged UNVERIFIED, with a rationale
+          // BOM.md gains a row per new LED: MPN flagged UNVERIFIED, with a rationale;
+          // columns are found by header name, as parseBomTable does, since they get reordered
           const bomRows = (await readFile(path.join(repo, 'docs', 'BOM.md'), 'utf8')).split('\n').filter((l) => l.startsWith('|'));
+          const cellsOf = (l: string): string[] => l.split('|').map((c) => c.trim()).slice(1, -1);
+          const header = bomRows.map(cellsOf).find((c) => c.some((h) => /^mpn$/i.test(h)) && c.some((h) => /^rationale$/i.test(h)));
+          expect(header, 'BOM.md has no table with MPN and Rationale columns').toBeDefined();
+          const mpnI = header!.findIndex((h) => /^mpn$/i.test(h));
+          const ratI = header!.findIndex((h) => /^rationale$/i.test(h));
           for (const led of leds) {
             const row = bomRows.find((l) => l.split('|').map((c) => c.trim()).some((c) => c.split(/[,\s]+/).includes(led.ref)));
             expect(row, `no BOM.md row for ${led.ref}`).toBeDefined();
-            expect(row).toMatch(/UNVERIFIED/);
-            const cells = row!.split('|').map((c) => c.trim()).slice(1, -1);
-            expect(cells[cells.length - 1], `${led.ref} has no rationale`).toBeTruthy();
+            const cells = cellsOf(row!);
+            expect(cells[mpnI], `${led.ref} MPN not flagged`).toMatch(/^UNVERIFIED\b/i);
+            expect(cells[ratI]?.trim(), `${led.ref} has no rationale`).toBeTruthy();
           }
           expect((await runErc(sch)).ok).toBe(true);
         } finally {

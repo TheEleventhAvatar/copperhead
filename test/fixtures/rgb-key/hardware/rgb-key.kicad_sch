@@ -74,8 +74,6 @@
 				(exclude_from_sim no)
 				(in_bom yes)
 				(on_board yes)
-				(in_pos_files yes)
-				(duplicate_pin_numbers_are_jumpers no)
 				(property "Reference" "D"
 					(at 0 9.398 0)
 					(show_name no)
@@ -595,8 +593,6 @@
 				(exclude_from_sim no)
 				(in_bom yes)
 				(on_board yes)
-				(in_pos_files yes)
-				(duplicate_pin_numbers_are_jumpers no)
 				(property "Reference" "R"
 					(at 2.032 0 90)
 					(show_name no)

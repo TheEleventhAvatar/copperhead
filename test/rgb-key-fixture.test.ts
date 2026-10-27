@@ -28,6 +28,12 @@ describe('rgb-key fixture', () => {
     }
   }, 60_000);
 
+  it('carries no KiCad-10-only tokens under its 20231120 header', async () => {
+    // KiCad 9 refuses to load a sheet with these (fixtures/rgb-key-source/README.md, step 4)
+    const text = await readFile(path.join(RGB_FIXTURE, 'hardware', 'rgb-key.kicad_sch'), 'utf8');
+    expect(text).not.toMatch(/\((in_pos_files|duplicate_pin_numbers_are_jumpers)\b/);
+  });
+
   it('has one RGB LED on GPIO4/5/6 and room for a second', async () => {
     const pins = await pinNets(path.join(RGB_FIXTURE, 'hardware', 'rgb-key.kicad_sch'));
     const u1 = new Map(pins.filter((p) => p.ref === 'U1').map((p) => [p.pinName, p.net]));
