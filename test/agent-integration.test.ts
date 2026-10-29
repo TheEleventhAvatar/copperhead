@@ -207,11 +207,15 @@ for (const { model, key } of providers) {
           );
           const res = await runAgentLoop({
             repoRoot: repo,
-            request: 'add a second RGB LED',
+            // AC-3.3's "add a second RGB LED", with the independence the GPIO check below
+            // requires said out loud: a live run that wired D2 onto D1's LED_R/G/B nets was a
+            // reasonable reading of the bare request, and the check rightly rejects it
+            request: 'add a second RGB LED, driven independently on its own GPIOs',
             model,
-            // 16 turns at the ~90 s a claude-code turn took live is about 24 min, inside the
-            // 30 min test limit, so the loop ends on its own terms and res.summary says where
-            maxTurns: 16,
+            // a complete live run used 16 turns and stopped one short of finish, so 24 leaves
+            // room; at the slowest ~90 s per claude-code turn seen live that is about 36 min,
+            // inside the 45 min test limit, so the loop ends on its own terms and res.summary says where
+            maxTurns: 24,
             log: () => {},
           });
           expect(res.outcome, res.summary).toBe('success');
@@ -262,8 +266,8 @@ for (const { model, key } of providers) {
           await cleanup();
         }
       },
-      // adding a part takes many edit turns, and a claude-code turn ran about 90 s live
-      1_800_000,
+      // 24 turns at up to ~90 s each, plus setup and ERC (see maxTurns above)
+      2_700_000,
     );
 
     it(
