@@ -173,7 +173,8 @@ for (const { model, key } of providers) {
             .filter((e) => e.type === 'assistant')
             .map((e) => (e.data as { text?: string | null }).text ?? '')
             .join('\n');
-          expect(reasoning).toMatch(/\bGPIO(0|3|45|46)\b[^\n]{0,80}strapping|strapping[^\n]{0,80}\bGPIO(0|3|45|46)\b|pins\.strapping/i);
+          // the window crosses line breaks (a markdown list of pins) and accepts ESP32's IO0-style names
+          expect(reasoning).toMatch(/\b(?:GPIO|IO)(0|3|45|46)\b[\s\S]{0,120}strapping|strapping[\s\S]{0,120}\b(?:GPIO|IO)(0|3|45|46)\b|pins\.strapping/i);
         } finally {
           await cleanup();
         }
